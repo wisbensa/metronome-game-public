@@ -4,7 +4,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>GROOVE DIG — prototype</title>
 <style>
-*{box-sizing:border-box}body{margin:0;background:#101b20;color:#fff1d5;font-family:system-ui,sans-serif}main{width:min(100%,520px);height:100svh;min-height:560px;margin:auto;display:grid;grid-template-rows:7fr 3fr;background:#192d32}.world{position:relative;overflow:hidden;min-height:0}canvas{width:100%;height:100%;display:block}header{position:absolute;inset:22px 22px auto;display:flex;justify-content:space-between}.eyebrow{font-size:10px;letter-spacing:.2em;color:#c3c5aa}h1{font-size:15px;margin:5px 0;letter-spacing:.12em}.depth{text-align:right}.depth strong{display:block;font-size:28px;font-variant-numeric:tabular-nums}.overlay{position:absolute;inset:0;display:grid;place-content:center;text-align:center;padding:24px;background:#102327c9}.overlay[hidden]{display:none}h2{font-size:30px;margin:0 0 12px}p{line-height:1.8;font-size:14px}button{cursor:pointer;font:inherit;color:inherit;border:0;touch-action:manipulation}button:focus-visible{outline:3px solid white;outline-offset:4px}#start{background:#f4bb57;color:#202a27;padding:16px 30px;border-radius:12px;font-weight:800}.controls{padding:16px 24px max(16px,env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:10px;border-top:1px solid #42605b}.meter-label{display:flex;justify-content:space-between;font-size:12px;letter-spacing:.1em}progress{width:100%;height:8px;border:0;border-radius:8px;overflow:hidden;background:#0e2024;accent-color:#f4bb57}progress::-webkit-progress-bar{background:#0e2024}progress::-webkit-progress-value{background:#f4bb57}#dig{flex:1;min-height:64px;max-height:110px;background:#f4bb57;color:#1d302e;border-radius:16px;box-shadow:0 5px #a77134;font-size:30px;font-weight:900;letter-spacing:.16em;user-select:none;-webkit-user-select:none}#dig:active:not(:disabled){transform:translateY(3px);box-shadow:0 2px #a77134}#dig:disabled{opacity:.4;cursor:default}footer{display:flex;justify-content:space-between;align-items:center;font-size:11px;color:#bcc5b7}#pause{padding:8px;border-radius:6px;background:transparent}#pause:disabled{opacity:.35}
+*{box-sizing:border-box}body{margin:0;background:#101b20;color:#fff1d5;font-family:system-ui,sans-serif}main{width:min(100%,520px);height:100svh;min-height:560px;margin:auto;display:grid;grid-template-rows:7fr 3fr;background:#192d32}.world{position:relative;overflow:hidden;min-height:0}canvas{width:100%;height:100%;display:block}header{position:absolute;inset:22px 22px auto;display:flex;justify-content:space-between}.eyebrow{font-size:10px;letter-spacing:.2em;color:#c3c5aa}h1{font-size:15px;margin:5px 0;letter-spacing:.12em}.depth{text-align:right}.depth strong{display:block;font-size:28px;font-variant-numeric:tabular-nums}.overlay{position:absolute;inset:0;display:grid;place-content:center;text-align:center;padding:24px;background:#102327c9}.overlay[hidden]{display:none}h2{font-size:30px;margin:0 0 12px}p{line-height:1.8;font-size:14px}button{cursor:pointer;font:inherit;color:inherit;border:0;touch-action:manipulation}button:focus-visible,input:focus-visible{outline:3px solid white;outline-offset:4px}#start{background:#f4bb57;color:#202a27;padding:16px 30px;border-radius:12px;font-weight:800}.controls{padding:16px 24px max(16px,env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:10px;border-top:1px solid #42605b}.meter-label{display:flex;justify-content:space-between;font-size:12px;letter-spacing:.1em}progress{width:100%;height:8px;border:0;border-radius:8px;overflow:hidden;background:#0e2024;accent-color:#f4bb57}progress::-webkit-progress-bar{background:#0e2024}progress::-webkit-progress-value{background:#f4bb57}.timing-control{display:grid;grid-template-columns:1fr auto;gap:4px 12px;align-items:center;font-size:11px;color:#bcc5b7}.timing-control input{width:100%;accent-color:#f4bb57;touch-action:pan-x}.timing-control output{font-variant-numeric:tabular-nums;color:#fff1d5}.timing-hint{grid-column:1/-1;font-size:10px;color:#9baaa2}#reset-timing{padding:3px 6px;background:transparent;color:#bcc5b7;font-size:10px;text-decoration:underline}#dig{flex:1;min-height:64px;max-height:110px;background:#f4bb57;color:#1d302e;border-radius:16px;box-shadow:0 5px #a77134;font-size:30px;font-weight:900;letter-spacing:.16em;user-select:none;-webkit-user-select:none}#dig:active:not(:disabled){transform:translateY(3px);box-shadow:0 2px #a77134}#dig:disabled{opacity:.4;cursor:default}footer{display:flex;justify-content:space-between;align-items:center;font-size:11px;color:#bcc5b7}#pause{padding:8px;border-radius:6px;background:transparent}#pause:disabled{opacity:.35}
 .beat-guide{position:absolute;bottom:16px;left:24px;right:24px;display:grid;grid-template-columns:repeat(4,1fr);gap:8px;pointer-events:none}
 .beat-step{display:flex;flex-direction:column;align-items:center;justify-content:center;height:54px;border:1px solid #54716d;border-radius:10px;background:#142c30ed;color:#b9cbc5;font-size:22px;font-weight:800}
 .beat-step small{font-size:9px;letter-spacing:.12em;height:12px}
@@ -21,7 +21,7 @@
 </div>
 <div class="overlay" id="overlay"><h2 id="heading">音に乗って、深く。</h2><p id="message">スネアの音に合わせて、2拍目・4拍目でDIG。<br>掘り進んで、迫る天井から逃げよう！<br>追いつかれたらGAME OVER。</p><button id="start">音楽を始める</button><p>仮のオリジナル曲 · 104 BPM<br>タップ / Space</p></div>
 </section>
-<section class="controls" aria-label="掘削操作"><div class="meter-label"><label for="groove">GROOVE</label><span id="power">×1.0</span></div><progress id="groove" max="100" value="0">0%</progress><button id="dig" disabled aria-label="DIG 穴を掘る">DIG</button><footer><span>2 & 4 · バックビートで掘ろう</span><button id="pause" disabled>停止</button></footer></section>
+<section class="controls" aria-label="掘削操作"><div class="meter-label"><label for="groove">GROOVE</label><span id="power">×1.0</span></div><progress id="groove" max="100" value="0">0%</progress><div class="timing-control"><label for="timing-offset">TIMING OFFSET</label><span><output id="timing-value" for="timing-offset">0 ms</output><button id="reset-timing" type="button">リセット</button></span><input id="timing-offset" type="range" min="-200" max="200" step="5" value="0" aria-describedby="timing-hint"><span class="timing-hint" id="timing-hint">音に対して遅く感じる場合はマイナスへ</span></div><button id="dig" disabled aria-label="DIG 穴を掘る">DIG</button><footer><span>2 & 4 · バックビートで掘ろう</span><button id="pause" disabled>停止</button></footer></section>
 </main>
 <script>
 'use strict';
@@ -33,7 +33,7 @@ const CONFIG = {
  timingOffsetMs:0
 };
 const beat = 60 / CONFIG.bpm;
-const el = Object.fromEntries(['scene','depth','overlay','heading','message','start','groove','power','dig','pause'].map(id => [id,document.getElementById(id)]));
+const el = Object.fromEntries(['scene','depth','overlay','heading','message','start','groove','power','timingOffset','timingValue','resetTiming','dig','pause'].map(id => [id,document.getElementById(id.replace(/[A-Z]/g,letter=>`-${letter.toLowerCase()}`))]));
 const ctx = el.scene.getContext('2d');
 const beatSteps = document.querySelectorAll('.beat-step');
 let displayedBeat = -1;
@@ -137,6 +137,15 @@ function eventAudioTime(event){
 }
 function correctedInputTime(event){
  return eventAudioTime(event)+CONFIG.timingOffsetMs/1000;
+}
+function setTimingOffset(value){
+ CONFIG.timingOffsetMs=clamp(Math.round(Number(value)/5)*5,-200,200);
+ el.timingOffset.value=CONFIG.timingOffsetMs;
+ el.timingValue.textContent=`${CONFIG.timingOffsetMs>0?'+':''}${CONFIG.timingOffsetMs} ms`;
+ try{localStorage.setItem('groove-dig-timing-offset-ms',String(CONFIG.timingOffsetMs));}catch{}
+}
+function loadTimingOffset(){
+ try{setTimingOffset(localStorage.getItem('groove-dig-timing-offset-ms')??0);}catch{setTimingOffset(0);}
 }
 async function start(){
  if(running||starting)return;starting=true;el.start.disabled=true;
@@ -248,9 +257,11 @@ function draw(timestamp){
 
 }
  el.start.addEventListener('click',start);el.pause.addEventListener('click',stop);
+ el.timingOffset.addEventListener('input',event=>setTimingOffset(event.target.value));
+ el.resetTiming.addEventListener('click',()=>setTimingOffset(0));
  el.dig.addEventListener('pointerdown',event=>{if(event.button!==0)return;event.preventDefault();tap(event);});
  el.dig.addEventListener('click',event=>{if(event.detail===0)tap(event);});
  document.addEventListener('keydown',event=>{if(event.code!=='Space'||!running||(event.target instanceof HTMLButtonElement&&event.target!==el.dig))return;event.preventDefault();if(!event.repeat)tap(event);});
- document.addEventListener('visibilitychange',()=>{if(document.hidden)stop();});window.addEventListener('resize',resize);resize();hud();requestAnimationFrame(draw);
+ document.addEventListener('visibilitychange',()=>{if(document.hidden)stop();});window.addEventListener('resize',resize);loadTimingOffset();resize();hud();requestAnimationFrame(draw);
 </script>
 </html>
