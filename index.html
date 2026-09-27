@@ -26,7 +26,12 @@
 <script>
 'use strict';
 // 手触り検証用の暫定値。確定したゲームバランスではない。
-const CONFIG = { bpm:104, window:.12, tight:.035, good:.075, gain:6, softGain:2, bad:6, miss:12, burstBeats:2, burstDepth:30, ceilingGap:18, ceilingSpeed:1.8 };
+const CONFIG = {
+ bpm:104, window:.12, tight:.035, good:.075, gain:6, softGain:2, bad:6, miss:12,
+ burstBeats:2, burstDepth:30, ceilingGap:18, ceilingSpeed:1.8,
+ // 端末ごとの調整値。正の値は入力を遅く、負の値は早く判定する（UI/保存方法は未確定）。
+ timingOffsetMs:0
+};
 const beat = 60 / CONFIG.bpm;
 const el = Object.fromEntries(['scene','depth','overlay','heading','message','start','groove','power','dig','pause'].map(id => [id,document.getElementById(id)]));
 const ctx = el.scene.getContext('2d');
@@ -42,7 +47,7 @@ function updateBeatGuide(){
  });
 }
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
-let audio, master, noise, timer, epoch=0, step=0, running=false, starting=false;
+let audio, master, noise, timer, epoch=0, step=0, running=false, starting=false, audioClockSync=null;
 let groove=0, depth=0, shownDepth=0, nextTarget=1, lastTap=-Infinity;
 let judgment=null, impact=1;
 let burst=null;
@@ -114,6 +119,25 @@ function schedule(){
  if(epoch+step*beat/4<now)step=Math.ceil((now-epoch)/(beat/4));
  while(epoch+step*beat/4<now+.12){musicStep(step,epoch+step*beat/4);step++;}
 }
+function configureMobileAudioSession(){
+ // iOS Safari 等で利用できる場合だけ、ゲーム音を再生向けセッションにする。
+ // 未対応ブラウザは何もしない。
+ const session=navigator.audioSession;
+ if(!session)return;
+ try{session.type='playback';}catch{}
+}
+function syncAudioClock(){
+ audioClockSync={audioTime:audio.currentTime,performanceTime:performance.now()};
+}
+function eventAudioTime(event){
+ // Event.timeStamp を AudioContext と同じ時間軸へ換算し、イベント処理の遅延を判定に混ぜない。
+ // Safari の古い epoch ベース timestamp では安全な currentTime にフォールバックする。
+ if(!audioClockSync||!Number.isFinite(event.timeStamp)||event.timeStamp>performance.now()+60000)return audio.currentTime;
+ return audioClockSync.audioTime+(event.timeStamp-audioClockSync.performanceTime)/1000;
+}
+function correctedInputTime(event){
+ return eventAudioTime(event)+CONFIG.timingOffsetMs/1000;
+}
 async function start(){
  if(running||starting)return;starting=true;el.start.disabled=true;
  try{
@@ -122,7 +146,9 @@ async function start(){
    noise=audio.createBuffer(1,Math.ceil(audio.sampleRate*.3),audio.sampleRate);const data=noise.getChannelData(0);for(let i=0;i<data.length;i++)data[i]=Math.random()*2-1;
    audio.onstatechange=()=>{if(running&&audio.state!=='running')stop();};
   }
+  configureMobileAudioSession();
   await audio.resume();if(document.hidden||audio.state!=='running')throw new Error('Audio unavailable');
+  syncAudioClock();
   groove=depth=shownDepth=strike=0;ceilingGap=CONFIG.ceilingGap;judgment=null;burst=null;dust=[];hits.clear();nextTarget=1;lastTap=-Infinity;step=0;epoch=audio.currentTime+.18;running=true;
   hud();el.overlay.hidden=true;el.dig.disabled=false;el.pause.disabled=false;el.dig.focus({preventScroll:true});schedule();timer=setInterval(schedule,25);
  }catch(error){el.message.textContent='音楽を開始できませんでした。もう一度お試しください。';}
@@ -145,8 +171,8 @@ function settle(now){
  if(burst)return;
  while(epoch+nextTarget*beat+CONFIG.window<now){if(!hits.has(nextTarget)){groove=clamp(groove-CONFIG.miss,0,100);showJudgment('TOO BAD',now);}hits.delete(nextTarget);nextTarget+=2;}
 }
-function tap(){
- if(!running)return;const now=audio.currentTime;updateBurst(now);if(updateCeiling(now)||burst)return;if(now<epoch||now-lastTap<.08)return;lastTap=now;settle(now);
+function tap(event){
+ if(!running)return;const now=correctedInputTime(event);updateBurst(audio.currentTime);if(updateCeiling(audio.currentTime)||burst)return;if(now<epoch||now-lastTap<.08)return;lastTap=now;settle(now);
  const target=Math.round(((now-epoch)/beat-1)/2)*2+1,difference=Math.abs(now-(epoch+target*beat));
  const result=target<1?'TOO BAD':grade(difference);
  if(result==='TOO BAD'){groove=clamp(groove-CONFIG.miss,0,100);showJudgment(result,now);hud();return;}
@@ -222,9 +248,9 @@ function draw(timestamp){
 
 }
  el.start.addEventListener('click',start);el.pause.addEventListener('click',stop);
- el.dig.addEventListener('pointerdown',event=>{if(event.button!==0)return;event.preventDefault();tap();});
- el.dig.addEventListener('click',event=>{if(event.detail===0)tap();});
- document.addEventListener('keydown',event=>{if(event.code!=='Space'||!running||(event.target instanceof HTMLButtonElement&&event.target!==el.dig))return;event.preventDefault();if(!event.repeat)tap();});
+ el.dig.addEventListener('pointerdown',event=>{if(event.button!==0)return;event.preventDefault();tap(event);});
+ el.dig.addEventListener('click',event=>{if(event.detail===0)tap(event);});
+ document.addEventListener('keydown',event=>{if(event.code!=='Space'||!running||(event.target instanceof HTMLButtonElement&&event.target!==el.dig))return;event.preventDefault();if(!event.repeat)tap(event);});
  document.addEventListener('visibilitychange',()=>{if(document.hidden)stop();});window.addEventListener('resize',resize);resize();hud();requestAnimationFrame(draw);
 </script>
 </html>
