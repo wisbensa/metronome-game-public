@@ -90,6 +90,12 @@ function hiss(time,duration,volume,frequency){
  const source=audio.createBufferSource(),filter=audio.createBiquadFilter(),gain=audio.createGain();source.buffer=noise;filter.type='highpass';filter.frequency.value=frequency;
  gain.gain.setValueAtTime(volume,time);gain.gain.exponentialRampToValueAtTime(.0001,time+duration);source.connect(filter);filter.connect(gain);gain.connect(master);voice(source,[filter,gain],time,duration);
 }
+function digImpact(time,strength){
+ // BGMスネアのノイズ感・低域とは分け、短い高域のピック衝撃音として聞かせる。
+ const volume=.07+strength*.0008;
+ tone(time,740,.075,volume,'square',330);
+ tone(time+.006,1480,.028,volume*.18,'sine',920);
+}
 function musicStep(index,time){
  // 16小節の仮曲。前半は鍵盤、後半は短いリードで応答する。
  const s=index%16,bar=Math.floor(index/16)%16;
@@ -191,7 +197,7 @@ function tap(event){
  const power=1+groove/25;depth+=power;strike=1;impact=(result==='JUST'?1.25:.8)+groove/100;
  if(groove===100)burst={start:now,depth};
  for(let i=0;i<(reducedMotion?12:32+groove*.5);i++)dust.push({x:width/2+20,y:height*.69,vx:(Math.random()-.5)*340*impact,vy:-90-Math.random()*270*impact,life:.4+Math.random()*.5,size:2+Math.random()*7,spark:i%3===0});dust=dust.slice(-220);
- tone(now,110,.09,.08+groove*.0007,'triangle',45);hiss(now,.07,.045+groove*.0005,1800);hud();
+ digImpact(audio.currentTime,groove);hud();
 }
 function resize(){const box=el.scene.getBoundingClientRect(),dpr=Math.min(devicePixelRatio||1,2);width=box.width;height=box.height;el.scene.width=Math.round(width*dpr);el.scene.height=Math.round(height*dpr);ctx.setTransform(dpr,0,0,dpr,0,0);}
 function rect(x,y,w,h,color){ctx.fillStyle=color;ctx.fillRect(x,y,w,h);}
