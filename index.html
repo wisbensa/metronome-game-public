@@ -25,7 +25,7 @@
 <div class="beat-guide" role="group" aria-label="左から1・2・3・4拍。2拍目と4拍目でDIG">
 <span class="beat-step">1<small>&nbsp;</small></span><span class="beat-step backbeat">2<small>DIG</small></span><span class="beat-step">3<small>&nbsp;</small></span><span class="beat-step backbeat">4<small>DIG</small></span>
 </div>
-<div class="overlay" id="overlay"><h2 id="heading">音に乗って、深く。</h2><p id="message">スネアの音に合わせて、2拍目・4拍目でDIG。<br>掘り進んで、迫る天井から逃げよう！<br>追いつかれたらGAME OVER。</p><button id="start">音楽を始める</button><p>仮のオリジナル曲 · 104 BPM<br>タップ / Space</p></div>
+<div class="overlay" id="overlay"><h2 id="heading">音に乗って、深く。</h2><p id="message">スネアの音に合わせて、2拍目・4拍目でDIG。<br>掘り進んで、迫る天井から逃げよう！<br>追いつかれたらGAME OVER。</p><button id="start">音楽を始める</button><p>仮のハードファンク曲 · 106 BPM<br>タップ / Space</p></div>
 </section>
 <section class="controls" aria-label="掘削操作"><div class="meter-label"><label for="groove">GROOVE</label><span id="power">×1.0</span></div><progress id="groove" max="100" value="0">0%</progress><div class="timing-control"><label for="timing-offset">TIMING OFFSET</label><span><output id="timing-value" for="timing-offset">0 ms</output><button id="reset-timing" type="button">リセット</button></span><input id="timing-offset" type="range" min="-200" max="200" step="5" value="0" aria-describedby="timing-hint"><span class="timing-hint" id="timing-hint">音に対して遅く感じる場合はマイナスへ</span></div><button id="dig" disabled aria-label="DIG 穴を掘る">DIG</button><footer><span>2 & 4 · バックビートで掘ろう</span><button id="pause" disabled>停止</button></footer></section>
 </main>
@@ -33,7 +33,7 @@
 'use strict';
 // 手触り検証用の暫定値。確定したゲームバランスではない。
 const CONFIG = {
- bpm:104, window:.12, tight:.035, good:.075, gain:6, softGain:2, bad:6, miss:12,
+ bpm:106, window:.12, tight:.035, good:.075, gain:6, softGain:2, bad:6, miss:12,
  burstBeats:2, burstDepth:30, ceilingGap:18, ceilingSpeed:1.8,
  // 端末ごとの調整値。正の値は入力を遅く、負の値は早く判定する（UI/保存方法は未確定）。
  timingOffsetMs:0
@@ -101,11 +101,23 @@ function hiss(time,duration,volume,frequency){
  const source=audio.createBufferSource(),filter=audio.createBiquadFilter(),gain=audio.createGain();source.buffer=noise;filter.type='highpass';filter.frequency.value=frequency;
  gain.gain.setValueAtTime(volume,time);gain.gain.exponentialRampToValueAtTime(.0001,time+duration);source.connect(filter);filter.connect(gain);gain.connect(master);voice(source,[filter,gain],time,duration);
 }
-function digImpact(time,strength){
- // BGMスネアのノイズ感・低域とは分け、短い高域のピック衝撃音として聞かせる。
- const volume=.07+strength*.0008;
- tone(time,740,.075,volume,'square',330);
- tone(time+.006,1480,.028,volume*.18,'sine',920);
+function judgmentSound(time,label,strength=0){
+ // 判定の良し悪しを、BGMの拍感を邪魔しない短い音色差で伝える。
+ if(label==='JUST'){
+  const volume=.085+strength*.0009;
+  tone(time,760,.085,volume,'square',340);
+  tone(time+.008,1520,.12,volume*.28,'sine',1080);
+  tone(time+.025,2280,.08,volume*.13,'sine',1760);
+ }else if(label==='GOOD'){
+  tone(time,580,.075,.075+strength*.0005,'triangle',270);
+  tone(time+.012,980,.05,.018,'sine',720);
+ }else if(label==='BAD'){
+  tone(time,205,.12,.07,'triangle',105);
+  hiss(time,.045,.025,1800);
+ }else{
+  tone(time,170,.16,.075,'sawtooth',68);
+  hiss(time+.02,.07,.035,900);
+ }
 }
 function burstImpact(time){
  // 通常DIG音と区別する、2拍間に連続する機械的な掘削・ドリル音。
@@ -118,27 +130,24 @@ function burstImpact(time){
  }
 }
 function musicStep(index,time){
- // 16小節の仮曲。前半は鍵盤、後半は短いリードで応答する。
+ // 106 BPMの16小節ハードファンク仮曲。反復するワンコード・ヴァンプで2・4拍を明瞭にする。
  const s=index%16,bar=Math.floor(index/16)%16;
- const roots=[45,45,50,52,41,43,45,40,50,43,48,45,41,43,45,40];
- const midi=n=>440*2**((n-69)/12),root=midi(roots[bar]);
- if([0,6,8].includes(s))tone(time,125,.17,.45,'sine',42);
- if(s===4||s===12){hiss(time,.14,.32,1100);tone(time,180,.09,.15,'triangle',80);}
- if(s%2===0)hiss(time,.035,s%4===0?.085:.05,6500);
- const bass={0:0,3:7,6:12,8:0,10:7,14:bar%2?10:3};
- if(s in bass)tone(time,midi(roots[bar]+bass[s]),.21,.18,'triangle');
- const chord=[0,bar===3||bar===7||bar===15?4:3,7,10];
- if(s===2||s===10)chord.forEach(n=>{
-  tone(time,midi(roots[bar]+24+n),.24,.028,'triangle');
-  tone(time,midi(roots[bar]+36+n),.09,.009);
- });
- const melody=[12,15,19,17,15,12,10,7];
- if([0,6,10].includes(s)&&bar%2===0){
-  const note=roots[bar]+24+melody[(Math.floor(s/4)+bar)%melody.length];
-  tone(time,midi(note),beat*.55,.035,bar<8?'sine':'triangle');
+ const midi=n=>440*2**((n-69)/12),root=bar===7||bar===15?43:45;
+ // キックは低く短く、2・4拍のスネアを前面に置く。
+ if([0,3,6,10,12,14].includes(s))tone(time,118,s===0?.13:.09,.30,'sine',48);
+ if(s===4||s===12){hiss(time,.12,.34,1200);tone(time,196,.075,.13,'triangle',74);}
+ if(s%2===0)hiss(time,.025,s%4===0?.07:.04,7200);
+ // 反復するシンコペーション・ベース。
+ const bass={0:0,3:7,5:10,7:7,8:0,10:3,13:7,15:10};
+ if(s in bass)tone(time,midi(root+bass[s]),s===15?.12:.17,.19,'sawtooth');
+ // ミュート気味のギター／クラビネット風コード。後半で高いアクセントを足す。
+ if([2,6,9,14].includes(s)){
+  [0,3,7].forEach(n=>tone(time,midi(root+24+n),.075,.018,'square'));
+  if(bar>=8)[0,3,7].forEach(n=>tone(time+.012,midi(root+36+n),.055,.012,'triangle'));
  }
- if(bar>=8&&(s===4||s===12))hiss(time,.065,.045,8000);
- if(bar%4===3&&(s===14||s===15))tone(time,150+(s-14)*45,.085,.08,'triangle',70);
+ // 4小節ごとの短いホーン・スタブと、最後の控えめなフィル。
+ if(bar%4===3&&(s===10||s===12))[0,4,7].forEach(n=>tone(time,midi(root+36+n),.16,.027,'sawtooth'));
+ if(bar%4===3&&(s===14||s===15)){tone(time,170+(s-14)*60,.07,.065,'triangle',74);hiss(time,.04,.035,4200);}
 }
 function schedule(){
  if(!running)return;const now=audio.currentTime;
@@ -205,20 +214,20 @@ function grade(difference){
 }
 function settle(now){
  if(burst)return;
- while(epoch+nextTarget*beat+CONFIG.window<now){if(!hits.has(nextTarget)){groove=clamp(groove-CONFIG.miss,0,100);showJudgment('TOO BAD',now);}hits.delete(nextTarget);nextTarget+=2;}
+ while(epoch+nextTarget*beat+CONFIG.window<now){if(!hits.has(nextTarget)){groove=clamp(groove-CONFIG.miss,0,100);showJudgment('TOO BAD',now);judgmentSound(audio.currentTime,'TOO BAD');}hits.delete(nextTarget);nextTarget+=2;}
 }
 function tap(event){
  if(!running)return;const now=correctedInputTime(event);updateBurst(audio.currentTime);if(updateCeiling(audio.currentTime)||burst)return;if(now<epoch||now-lastTap<.08)return;lastTap=now;settle(now);
  const target=Math.round(((now-epoch)/beat-1)/2)*2+1,difference=Math.abs(now-(epoch+target*beat));
  const result=target<1?'TOO BAD':grade(difference);
- if(result==='TOO BAD'){groove=clamp(groove-CONFIG.miss,0,100);showJudgment(result,now);hud();return;}
+ if(result==='TOO BAD'){groove=clamp(groove-CONFIG.miss,0,100);showJudgment(result,now);judgmentSound(audio.currentTime,result);hud();return;}
  if(hits.has(target))return;hits.add(target);showJudgment(result,now,now-(epoch+target*beat));
  groove=clamp(groove+(result==='JUST'?CONFIG.gain:result==='GOOD'?CONFIG.softGain:-CONFIG.bad),0,100);
- if(result==='BAD'){hud();return;}
+ if(result==='BAD'){judgmentSound(audio.currentTime,result);hud();return;}
  const power=1+groove/25;depth+=power;strike=1;impact=(result==='JUST'?1.25:.8)+groove/100;
  if(groove===100){burst={start:now,depth};burstImpact(audio.currentTime);}
  for(let i=0;i<(reducedMotion?12:32+groove*.5);i++)dust.push({x:width/2+20,y:height*.69,vx:(Math.random()-.5)*340*impact,vy:-90-Math.random()*270*impact,life:.4+Math.random()*.5,size:2+Math.random()*7,spark:i%3===0});dust=dust.slice(-220);
- digImpact(audio.currentTime,groove);hud();
+ judgmentSound(audio.currentTime,result,groove);hud();
 }
 function resize(){const box=el.scene.getBoundingClientRect(),dpr=Math.min(devicePixelRatio||1,2);width=box.width;height=box.height;el.scene.width=Math.round(width*dpr);el.scene.height=Math.round(height*dpr);ctx.setTransform(dpr,0,0,dpr,0,0);}
 function rect(x,y,w,h,color){ctx.fillStyle=color;ctx.fillRect(x,y,w,h);}
