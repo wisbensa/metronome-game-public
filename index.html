@@ -5,12 +5,18 @@
 <title>GROOVE DIG — prototype</title>
 <style>
 *{box-sizing:border-box}body{margin:0;background:#101b20;color:#fff1d5;font-family:system-ui,sans-serif}main{width:min(100%,520px);height:100svh;min-height:560px;margin:auto;display:grid;grid-template-rows:7fr 3fr;background:#192d32}.world{position:relative;overflow:hidden;min-height:0}canvas{width:100%;height:100%;display:block}header{position:absolute;inset:22px 22px auto;display:flex;justify-content:space-between}.eyebrow{font-size:10px;letter-spacing:.2em;color:#c3c5aa}h1{font-size:15px;margin:5px 0;letter-spacing:.12em}.depth{text-align:right}.depth strong{display:block;font-size:28px;font-variant-numeric:tabular-nums}.overlay{position:absolute;inset:0;display:grid;place-content:center;text-align:center;padding:24px;background:#102327c9}.overlay[hidden]{display:none}h2{font-size:30px;margin:0 0 12px}p{line-height:1.8;font-size:14px}button{cursor:pointer;font:inherit;color:inherit;border:0;touch-action:manipulation}button:focus-visible,input:focus-visible{outline:3px solid white;outline-offset:4px}#start{background:#f4bb57;color:#202a27;padding:16px 30px;border-radius:12px;font-weight:800}.controls{padding:16px 24px max(16px,env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:10px;border-top:1px solid #42605b}.meter-label{display:flex;justify-content:space-between;font-size:12px;letter-spacing:.1em}progress{width:100%;height:8px;border:0;border-radius:8px;overflow:hidden;background:#0e2024;accent-color:#f4bb57}progress::-webkit-progress-bar{background:#0e2024}progress::-webkit-progress-value{background:#f4bb57}.timing-control{display:grid;grid-template-columns:1fr auto;gap:4px 12px;align-items:center;font-size:11px;color:#bcc5b7}.timing-control input{width:100%;accent-color:#f4bb57;touch-action:pan-x}.timing-control output{font-variant-numeric:tabular-nums;color:#fff1d5}.timing-hint{grid-column:1/-1;font-size:10px;color:#9baaa2}#reset-timing{padding:3px 6px;background:transparent;color:#bcc5b7;font-size:10px;text-decoration:underline}#dig{flex:1;min-height:64px;max-height:110px;background:#f4bb57;color:#1d302e;border-radius:16px;box-shadow:0 5px #a77134;font-size:30px;font-weight:900;letter-spacing:.16em;user-select:none;-webkit-user-select:none}#dig:active:not(:disabled){transform:translateY(3px);box-shadow:0 2px #a77134}#dig:disabled{opacity:.4;cursor:default}footer{display:flex;justify-content:space-between;align-items:center;font-size:11px;color:#bcc5b7}#pause{padding:8px;border-radius:6px;background:transparent}#pause:disabled{opacity:.35}
-.beat-guide{position:absolute;bottom:16px;left:24px;right:24px;display:grid;grid-template-columns:repeat(4,1fr);gap:8px;pointer-events:none}
-.beat-step{display:flex;flex-direction:column;align-items:center;justify-content:center;height:54px;border:1px solid #54716d;border-radius:10px;background:#142c30ed;color:#b9cbc5;font-size:22px;font-weight:800}
-.beat-step small{font-size:9px;letter-spacing:.12em;height:12px}
-.beat-step.backbeat{border-color:#f4bb57;color:#f4bb57}
-.beat-step.current{background:#bdd7cc;color:#142c30;border-color:#bdd7cc}
-.beat-step.backbeat.current{background:#f4bb57;color:#142c30;border-color:#ffdc95;box-shadow:0 0 18px #f4bb5755}
+.beat-guide{--beat-x:12.5%;position:absolute;bottom:16px;left:30px;right:30px;display:grid;grid-template-columns:repeat(4,1fr);pointer-events:none;border-top:1px solid #54716d}
+.beat-guide::after{content:'';position:absolute;top:-8px;left:var(--beat-x);width:16px;height:16px;border:3px solid #d8eee3;border-radius:50%;background:#142c30;box-shadow:0 0 14px #bdd7cc;transform:translateX(-50%);opacity:0;transition:opacity .15s;z-index:2}
+.beat-guide.active::after{opacity:1}
+.beat-step{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:52px;padding-bottom:1px;color:#8fa39b;font-size:17px;font-weight:800}
+.beat-step::before{content:'';position:absolute;top:-6px;width:11px;height:11px;border-radius:50%;background:#54716d;transition:transform .1s,background .1s,box-shadow .1s}
+.beat-step small{font-size:9px;letter-spacing:.12em;height:12px;color:inherit}
+.beat-step.backbeat{color:#f4bb57}
+.beat-step.backbeat::before{background:#f4bb57}
+.beat-step.current{color:#d8eee3}
+.beat-step.current::before{background:#d8eee3;transform:scale(1.8);box-shadow:0 0 10px #bdd7cc}
+.beat-step.backbeat.current{color:#ffe2a0}
+.beat-step.backbeat.current::before{background:#f4bb57;box-shadow:0 0 14px #f4bb57}
 </style>
 <main>
 <section class="world" aria-label="穴掘りのゲーム画面">
@@ -36,9 +42,14 @@ const beat = 60 / CONFIG.bpm;
 const el = Object.fromEntries(['scene','depth','overlay','heading','message','start','groove','power','timingOffset','timingValue','resetTiming','dig','pause'].map(id => [id,document.getElementById(id.replace(/[A-Z]/g,letter=>`-${letter.toLowerCase()}`))]));
 const ctx = el.scene.getContext('2d');
 const beatSteps = document.querySelectorAll('.beat-step');
+const beatGuide = document.querySelector('.beat-guide');
 let displayedBeat = -1;
 function updateBeatGuide(){
- const current = running && audio.currentTime >= epoch ? Math.floor((audio.currentTime-epoch)/beat)%4 : -1;
+ const position = running && audio.currentTime >= epoch ? ((audio.currentTime-epoch)/beat)%4 : -1;
+ const current = position<0 ? -1 : Math.floor(position);
+ const indicatorPosition=reducedMotion&&position>=0?current:position;
+ beatGuide.classList.toggle('active',current>=0);
+ if(indicatorPosition>=0)beatGuide.style.setProperty('--beat-x',`${((indicatorPosition+.5)/4)*100}%`);
  if(current===displayedBeat)return;
  displayedBeat=current;
  beatSteps.forEach((marker,index)=>{
@@ -95,6 +106,16 @@ function digImpact(time,strength){
  const volume=.07+strength*.0008;
  tone(time,740,.075,volume,'square',330);
  tone(time+.006,1480,.028,volume*.18,'sine',920);
+}
+function burstImpact(time){
+ // 通常DIG音と区別する、2拍間に連続する機械的な掘削・ドリル音。
+ const duration=beat*CONFIG.burstBeats,hits=CONFIG.burstBeats*4;
+ tone(time,135,duration,.10,'sawtooth',58);
+ for(let index=0;index<hits;index++){
+  const hit=time+index*beat/4;
+  tone(hit,620+(index%2)*170,.055,.065,'square',250);
+  hiss(hit,.045,.055,3000);
+ }
 }
 function musicStep(index,time){
  // 16小節の仮曲。前半は鍵盤、後半は短いリードで応答する。
@@ -195,7 +216,7 @@ function tap(event){
  groove=clamp(groove+(result==='JUST'?CONFIG.gain:result==='GOOD'?CONFIG.softGain:-CONFIG.bad),0,100);
  if(result==='BAD'){hud();return;}
  const power=1+groove/25;depth+=power;strike=1;impact=(result==='JUST'?1.25:.8)+groove/100;
- if(groove===100)burst={start:now,depth};
+ if(groove===100){burst={start:now,depth};burstImpact(audio.currentTime);}
  for(let i=0;i<(reducedMotion?12:32+groove*.5);i++)dust.push({x:width/2+20,y:height*.69,vx:(Math.random()-.5)*340*impact,vy:-90-Math.random()*270*impact,life:.4+Math.random()*.5,size:2+Math.random()*7,spark:i%3===0});dust=dust.slice(-220);
  digImpact(audio.currentTime,groove);hud();
 }
@@ -230,9 +251,16 @@ function draw(timestamp){
  ctx.save();ctx.textAlign='center';ctx.font='700 12px system-ui';ctx.fillStyle=ceilingGap<6?'#ff788b':'#fff1d5';ctx.fillText(`天井まで ${Math.max(0,ceilingGap).toFixed(1)} m`,width/2,96);ctx.restore();
  const glow=ctx.createRadialGradient(width/2,floor-70,5,width/2,floor-70,width*.42);glow.addColorStop(0,'#f4bb5725');glow.addColorStop(1,'#f4bb5700');ctx.fillStyle=glow;ctx.fillRect(0,0,width,height);rect(width*.2,floor,width*.6,8,'#b28a59');
  const musicalBeat=running?Math.max(0,(audio.currentTime-epoch)/beat):0,sway=reducedMotion?0:Math.sin(musicalBeat*Math.PI*2)*2;
- ctx.save();ctx.translate(width/2-10,floor-9+sway+(reducedMotion?0:strike*10*impact));
- rect(-19,-16,13,16,'#101e25');rect(7,-16,13,16,'#101e25');rect(-20,-55,40,40,'#4f9791');rect(-20,-28,40,8,'#294e50');rect(-15,-80,30,27,'#ebbe86');rect(9,-71,4,5,'#253137');rect(-21,-89,42,17,'#efb64b');rect(-26,-75,52,6,'#ffcd6b');rect(12,-84,9,9,'#fff0be');
- ctx.translate(13,-48);ctx.rotate(reducedMotion?.35:-.8+Math.sin(musicalBeat*Math.PI)*.4+strike*(1.4+groove/200));rect(0,-4,49,8,'#c6985d');rect(38,-24,8,44,'#a8c4c1');rect(30,-24,25,7,'#d6e5d9');ctx.restore();
+ const dancePhase=burst?(audio.currentTime-burst.start)*Math.PI*6:0,danceStep=burst&&!reducedMotion?Math.sin(dancePhase):0,danceBounce=burst&&!reducedMotion?Math.max(0,Math.cos(dancePhase)):0;
+ ctx.save();ctx.translate(width/2-10+danceStep*28,floor-9+sway-danceBounce*12+(reducedMotion?0:strike*10*impact));ctx.rotate(danceStep*.12);
+ rect(-19-danceStep*9,-16-Math.max(0,-danceStep)*5,13,16,'#101e25');rect(7+danceStep*9,-16-Math.max(0,danceStep)*5,13,16,'#101e25');rect(-20,-55,40,40,'#4f9791');rect(-20,-28,40,8,'#294e50');
+ if(burst){
+  // バースト中はツルハシを置き、腕を上げて左右にステップするダンスへ切り替える。
+  ctx.save();ctx.translate(-16,-51);ctx.rotate(-1.15-danceStep*.3);rect(-4,-31,8,35,'#4f9791');ctx.translate(32,0);ctx.rotate(2.3+danceStep*.3);rect(-4,-31,8,35,'#4f9791');ctx.restore();
+ }else{
+  ctx.save();ctx.translate(13,-48);ctx.rotate(reducedMotion?.35:-.8+Math.sin(musicalBeat*Math.PI)*.4+strike*(1.4+groove/200));rect(0,-4,49,8,'#c6985d');rect(38,-24,8,44,'#a8c4c1');rect(30,-24,25,7,'#d6e5d9');ctx.restore();
+ }
+ rect(-15,-80,30,27,'#ebbe86');rect(9,-71,4,5,'#253137');rect(-21,-89,42,17,'#efb64b');rect(-26,-75,52,6,'#ffcd6b');rect(12,-84,9,9,'#fff0be');ctx.restore();
  dust.forEach(p=>{if(running){p.life-=dt;p.x+=p.vx*dt;p.y+=p.vy*dt;p.vy+=380*dt;}ctx.globalAlpha=clamp(p.life*2,0,1);rect(p.x,p.y,p.spark?p.size*.5:p.size,p.spark?p.size*2:p.size,p.spark?'#fff0b3':'#efc07b');});ctx.globalAlpha=1;dust=dust.filter(p=>p.life>0);
  if(strike>0&&!reducedMotion){
   const progress=1-strike,cx=width/2+20;
