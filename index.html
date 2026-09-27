@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="ja">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>GROOVE DIG — prototype</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#101b20;color:#fff1d5;font-family:system-ui,sans-serif}main{width:min(100%,520px);height:100svh;min-height:560px;margin:auto;display:grid;grid-template-rows:7fr 3fr;background:#192d32}.world{position:relative;overflow:hidden;min-height:0}canvas{width:100%;height:100%;display:block}header{position:absolute;inset:22px 22px auto;display:flex;justify-content:space-between}.eyebrow{font-size:10px;letter-spacing:.2em;color:#c3c5aa}h1{font-size:15px;margin:5px 0;letter-spacing:.12em}.depth{text-align:right}.depth strong{display:block;font-size:28px;font-variant-numeric:tabular-nums}.overlay{position:absolute;inset:0;display:grid;place-content:center;text-align:center;padding:24px;background:#102327c9}.overlay[hidden]{display:none}h2{font-size:30px;margin:0 0 12px}p{line-height:1.8;font-size:14px}button{cursor:pointer;font:inherit;color:inherit;border:0;touch-action:manipulation}button:focus-visible{outline:3px solid white;outline-offset:4px}#start{background:#f4bb57;color:#202a27;padding:16px 30px;border-radius:12px;font-weight:800}.controls{padding:16px 24px max(16px,env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:10px;border-top:1px solid #42605b}.meter-label{display:flex;justify-content:space-between;font-size:12px;letter-spacing:.1em}progress{width:100%;height:8px;border:0;border-radius:8px;overflow:hidden;background:#0e2024;accent-color:#f4bb57}progress::-webkit-progress-bar{background:#0e2024}progress::-webkit-progress-value{background:#f4bb57}#dig{flex:1;min-height:64px;max-height:110px;background:#f4bb57;color:#1d302e;border-radius:16px;box-shadow:0 5px #a77134;font-size:30px;font-weight:900;letter-spacing:.16em;user-select:none;-webkit-user-select:none}#dig:active:not(:disabled){transform:translateY(3px);box-shadow:0 2px #a77134}#dig:disabled{opacity:.4;cursor:default}footer{display:flex;justify-content:space-between;align-items:center;font-size:11px;color:#bcc5b7}#pause{padding:8px;border-radius:6px;background:transparent}#pause:disabled{opacity:.35}
+.beat-guide{position:absolute;bottom:16px;left:24px;right:24px;display:grid;grid-template-columns:repeat(4,1fr);gap:8px;pointer-events:none}
+.beat-step{display:flex;flex-direction:column;align-items:center;justify-content:center;height:54px;border:1px solid #54716d;border-radius:10px;background:#142c30ed;color:#b9cbc5;font-size:22px;font-weight:800}
+.beat-step small{font-size:9px;letter-spacing:.12em;height:12px}
+.beat-step.backbeat{border-color:#f4bb57;color:#f4bb57}
+.beat-step.current{background:#bdd7cc;color:#142c30;border-color:#bdd7cc}
+.beat-step.backbeat.current{background:#f4bb57;color:#142c30;border-color:#ffdc95;box-shadow:0 0 18px #f4bb5755}
+</style>
+<main>
+<section class="world" aria-label="穴掘りのゲーム画面">
+<canvas id="scene" aria-label="リズムに合わせて掘り進む採掘者"></canvas>
+<header><div><div class="eyebrow">RHYTHM × DIGGING</div><h1>GROOVE DIG</h1></div><div class="depth"><span class="eyebrow">DEPTH</span><strong><span id="depth">0.0</span><small> m</small></strong></div></header>
+<div class="beat-guide" role="group" aria-label="左から1・2・3・4拍。2拍目と4拍目でDIG">
+<span class="beat-step">1<small>&nbsp;</small></span><span class="beat-step backbeat">2<small>DIG</small></span><span class="beat-step">3<small>&nbsp;</small></span><span class="beat-step backbeat">4<small>DIG</small></span>
+</div>
+<div class="overlay" id="overlay"><h2 id="heading">音に乗って、深く。</h2><p id="message">スネアの音に合わせて、2拍目・4拍目でDIG。<br>掘り進んで、迫る天井から逃げよう！<br>追いつかれたらGAME OVER。</p><button id="start">音楽を始める</button><p>仮のオリジナル曲 · 104 BPM<br>タップ / Space</p></div>
+</section>
+<section class="controls" aria-label="掘削操作"><div class="meter-label"><label for="groove">GROOVE</label><span id="power">×1.0</span></div><progress id="groove" max="100" value="0">0%</progress><button id="dig" disabled aria-label="DIG 穴を掘る">DIG</button><footer><span>2 & 4 · バックビートで掘ろう</span><button id="pause" disabled>停止</button></footer></section>
+</main>
+<script>
+'use strict';
+// 手触り検証用の暫定値。確定したゲームバランスではない。
+const CONFIG = { bpm:104, window:.12, tight:.035, good:.075, gain:6, softGain:2, bad:6, miss:12, burstBeats:2, burstDepth:30, ceilingGap:18, ceilingSpeed:1.8 };
+const beat = 60 / CONFIG.bpm;
+const el = Object.fromEntries(['scene','depth','overlay','heading','message','start','groove','power','dig','pause'].map(id => [id,document.getElementById(id)]));
+const ctx = el.scene.getContext('2d');
+const beatSteps = document.querySelectorAll('.beat-step');
+let displayedBeat = -1;
+function updateBeatGuide(){
+ const current = running && audio.currentTime >= epoch ? Math.floor((audio.currentTime-epoch)/beat)%4 : -1;
+ if(current===displayedBeat)return;
+ displayedBeat=current;
+ beatSteps.forEach((marker,index)=>{
+  marker.classList.toggle('current',index===current);
+  if(index===current)marker.setAttribute('aria-current','true');else marker.removeAttribute('aria-current');
+ });
+}
+const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+let audio, master, noise, timer, epoch=0, step=0, running=false, starting=false;
+let groove=0, depth=0, shownDepth=0, nextTarget=1, lastTap=-Infinity;
+let judgment=null, impact=1;
+let burst=null;
+let ceilingGap=CONFIG.ceilingGap;
+function updateCeiling(now){
+ ceilingGap=CONFIG.ceilingGap+depth-Math.max(0,now-epoch)*CONFIG.ceilingSpeed;
+ if(ceilingGap>0)return false;
+ ceilingGap=0;stop();
+ el.heading.textContent='GAME OVER';
+ el.message.textContent=`天井に追いつかれた！ 記録 ${depth.toFixed(1)} m`;
+ return true;
+}
+let strike=0, dust=[], width=0, height=0, previous=0;
+const hits=new Set(), voices=new Set();
+const clamp=(v,min,max)=>Math.max(min,Math.min(max,v));
+function hud(){el.depth.textContent=depth.toFixed(1);el.groove.value=groove;el.power.textContent=burst?'BURST!':`×${(1+groove/25).toFixed(1)}`;el.dig.textContent=burst?'BURST!':'DIG';}
+function updateBurst(now){
+ if(!burst)return;
+ const progress=clamp((now-burst.start)/(beat*CONFIG.burstBeats),0,1);
+ depth=burst.depth+CONFIG.burstDepth*progress;
+ groove=100*(1-progress);
+ strike=reducedMotion?.3:.65+.35*Math.sin(progress*Math.PI*12)**2;impact=2.6;
+ if(progress>=1){
+  const end=burst.start+beat*CONFIG.burstBeats;
+  // バーストが覆った拍は見逃しにせず、終了後の拍から通常判定に戻る。
+  nextTarget=Math.max(nextTarget,Math.floor(((end-epoch)/beat-1)/2)*2+3);
+  hits.clear();burst=null;groove=0;
+ }
+}
+function voice(source,nodes,time,duration){
+ voices.add(source);source.onended=()=>{source.disconnect();nodes.forEach(n=>n.disconnect());voices.delete(source);};source.start(time);source.stop(time+duration);
+}
+function tone(time,frequency,duration,volume,type='sine',endFrequency){
+ const source=audio.createOscillator(),gain=audio.createGain();source.type=type;source.frequency.setValueAtTime(frequency,time);
+ if(endFrequency)source.frequency.exponentialRampToValueAtTime(endFrequency,time+duration);
+ gain.gain.setValueAtTime(.0001,time);gain.gain.linearRampToValueAtTime(volume,time+.005);gain.gain.exponentialRampToValueAtTime(.0001,time+duration);
+ source.connect(gain);gain.connect(master);voice(source,[gain],time,duration);
+}
+function hiss(time,duration,volume,frequency){
+ const source=audio.createBufferSource(),filter=audio.createBiquadFilter(),gain=audio.createGain();source.buffer=noise;filter.type='highpass';filter.frequency.value=frequency;
+ gain.gain.setValueAtTime(volume,time);gain.gain.exponentialRampToValueAtTime(.0001,time+duration);source.connect(filter);filter.connect(gain);gain.connect(master);voice(source,[filter,gain],time,duration);
+}
+function musicStep(index,time){
+ // 16小節の仮曲。前半は鍵盤、後半は短いリードで応答する。
+ const s=index%16,bar=Math.floor(index/16)%16;
+ const roots=[45,45,50,52,41,43,45,40,50,43,48,45,41,43,45,40];
+ const midi=n=>440*2**((n-69)/12),root=midi(roots[bar]);
+ if([0,6,8].includes(s))tone(time,125,.17,.45,'sine',42);
+ if(s===4||s===12){hiss(time,.14,.32,1100);tone(time,180,.09,.15,'triangle',80);}
+ if(s%2===0)hiss(time,.035,s%4===0?.085:.05,6500);
+ const bass={0:0,3:7,6:12,8:0,10:7,14:bar%2?10:3};
+ if(s in bass)tone(time,midi(roots[bar]+bass[s]),.21,.18,'triangle');
+ const chord=[0,bar===3||bar===7||bar===15?4:3,7,10];
+ if(s===2||s===10)chord.forEach(n=>{
+  tone(time,midi(roots[bar]+24+n),.24,.028,'triangle');
+  tone(time,midi(roots[bar]+36+n),.09,.009);
+ });
+ const melody=[12,15,19,17,15,12,10,7];
+ if([0,6,10].includes(s)&&bar%2===0){
+  const note=roots[bar]+24+melody[(Math.floor(s/4)+bar)%melody.length];
+  tone(time,midi(note),beat*.55,.035,bar<8?'sine':'triangle');
+ }
+ if(bar>=8&&(s===4||s===12))hiss(time,.065,.045,8000);
+ if(bar%4===3&&(s===14||s===15))tone(time,150+(s-14)*45,.085,.08,'triangle',70);
+}
+function schedule(){
+ if(!running)return;const now=audio.currentTime;
+ // 遅延後に過去の音をまとめて発音しない。拍の基準時刻は変更しない。
+ if(epoch+step*beat/4<now)step=Math.ceil((now-epoch)/(beat/4));
+ while(epoch+step*beat/4<now+.12){musicStep(step,epoch+step*beat/4);step++;}
+}
+async function start(){
+ if(running||starting)return;starting=true;el.start.disabled=true;
+ try{
+  if(!audio){
+   audio=new(window.AudioContext||window.webkitAudioContext)({latencyHint:'interactive'});master=audio.createGain();master.gain.value=.65;master.connect(audio.destination);
+   noise=audio.createBuffer(1,Math.ceil(audio.sampleRate*.3),audio.sampleRate);const data=noise.getChannelData(0);for(let i=0;i<data.length;i++)data[i]=Math.random()*2-1;
+   audio.onstatechange=()=>{if(running&&audio.state!=='running')stop();};
+  }
+  await audio.resume();if(document.hidden||audio.state!=='running')throw new Error('Audio unavailable');
+  groove=depth=shownDepth=strike=0;ceilingGap=CONFIG.ceilingGap;judgment=null;burst=null;dust=[];hits.clear();nextTarget=1;lastTap=-Infinity;step=0;epoch=audio.currentTime+.18;running=true;
+  hud();el.overlay.hidden=true;el.dig.disabled=false;el.pause.disabled=false;el.dig.focus({preventScroll:true});schedule();timer=setInterval(schedule,25);
+ }catch(error){el.message.textContent='音楽を開始できませんでした。もう一度お試しください。';}
+ finally{starting=false;el.start.disabled=false;}
+}
+function stop(){
+ if(!running)return;updateBurst(audio.currentTime);burst=null;running=false;hud();updateBeatGuide();clearInterval(timer);for(const source of voices){try{source.stop();}catch{}}
+ el.dig.disabled=true;el.pause.disabled=true;el.overlay.hidden=false;el.heading.textContent=`${depth.toFixed(1)} m 掘り進んだ`;el.message.textContent='また音に乗って、地中へ。';el.start.textContent='最初からもう一度';
+ if(audio.state==='running')audio.suspend().catch(()=>{});
+}
+function showJudgment(label, now, offset=0){
+ const timing=label==='GOOD'||label==='BAD'?(offset<0?'早い / EARLY':'遅い / LATE'):'';
+ judgment={label,timing,time:now,color:({'JUST':'#ffe18b','GOOD':'#8cf3d3','BAD':'#ffae79','TOO BAD':'#ff788b'})[label]};
+}
+function grade(difference){
+ const epsilon=1e-9;
+ return difference<=CONFIG.tight+epsilon?'JUST':difference<=CONFIG.good+epsilon?'GOOD':difference<=CONFIG.window+epsilon?'BAD':'TOO BAD';
+}
+function settle(now){
+ if(burst)return;
+ while(epoch+nextTarget*beat+CONFIG.window<now){if(!hits.has(nextTarget)){groove=clamp(groove-CONFIG.miss,0,100);showJudgment('TOO BAD',now);}hits.delete(nextTarget);nextTarget+=2;}
+}
+function tap(){
+ if(!running)return;const now=audio.currentTime;updateBurst(now);if(updateCeiling(now)||burst)return;if(now<epoch||now-lastTap<.08)return;lastTap=now;settle(now);
+ const target=Math.round(((now-epoch)/beat-1)/2)*2+1,difference=Math.abs(now-(epoch+target*beat));
+ const result=target<1?'TOO BAD':grade(difference);
+ if(result==='TOO BAD'){groove=clamp(groove-CONFIG.miss,0,100);showJudgment(result,now);hud();return;}
+ if(hits.has(target))return;hits.add(target);showJudgment(result,now,now-(epoch+target*beat));
+ groove=clamp(groove+(result==='JUST'?CONFIG.gain:result==='GOOD'?CONFIG.softGain:-CONFIG.bad),0,100);
+ if(result==='BAD'){hud();return;}
+ const power=1+groove/25;depth+=power;strike=1;impact=(result==='JUST'?1.25:.8)+groove/100;
+ if(groove===100)burst={start:now,depth};
+ for(let i=0;i<(reducedMotion?12:32+groove*.5);i++)dust.push({x:width/2+20,y:height*.69,vx:(Math.random()-.5)*340*impact,vy:-90-Math.random()*270*impact,life:.4+Math.random()*.5,size:2+Math.random()*7,spark:i%3===0});dust=dust.slice(-220);
+ tone(now,110,.09,.08+groove*.0007,'triangle',45);hiss(now,.07,.045+groove*.0005,1800);hud();
+}
+function resize(){const box=el.scene.getBoundingClientRect(),dpr=Math.min(devicePixelRatio||1,2);width=box.width;height=box.height;el.scene.width=Math.round(width*dpr);el.scene.height=Math.round(height*dpr);ctx.setTransform(dpr,0,0,dpr,0,0);}
+function rect(x,y,w,h,color){ctx.fillStyle=color;ctx.fillRect(x,y,w,h);}
+function draw(timestamp){
+ const dt=Math.min((timestamp-previous)/1000||0,.05);previous=timestamp;updateBeatGuide();if(running){updateBurst(audio.currentTime);if(!updateCeiling(audio.currentTime))settle(audio.currentTime);hud();}
+ shownDepth+=(depth-shownDepth)*(1-Math.exp(-dt*(12+groove/10)));strike=Math.max(0,strike-dt*3.5);
+ ctx.clearRect(0,0,width,height);ctx.save();if(!reducedMotion&&running)ctx.translate(Math.sin(timestamp*.12)*strike*impact*5,Math.cos(timestamp*.1)*strike*impact*4);
+ rect(0,0,width,height,'#142c30');const floor=height*.69,offset=shownDepth*9;
+ for(let row=-1;row<height/48+1;row++){
+  const y=row*48-offset%48,worldRow=row+Math.floor(offset/48),colors=['#71513d','#805b41','#674b39','#916748'];
+  rect(0,y,width,46,colors[((worldRow%4)+4)%4]);for(let col=0;col<width/65;col++)rect(col*65+(worldRow%2)*24,y+12,24,4,'#a17a52');
+ }
+ rect(width*.2,0,width*.6,floor,'#142c30');rect(width*.2,0,7,floor,'#263936');rect(width*.8-7,0,7,floor,'#263936');
+ if(burst){
+  rect(width*.2,0,width*.6,floor,'#384333');
+  if(!reducedMotion){
+   ctx.strokeStyle='#ffe18b80';ctx.lineWidth=2;
+   for(let i=0;i<18;i++){
+    const x=width*(.23+(i%6)*.105),y=((i*83-(audio.currentTime-burst.start)*850)%floor+floor)%floor;
+    ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x,y-28-(i%3)*15);ctx.stroke();
+   }
+  }
+ }
+ const ceilingY=floor-98-Math.max(0,ceilingGap)*9;
+ if(ceilingY>0){
+  rect(width*.2,0,width*.6,ceilingY,'#494e4b');
+  for(let row=0;row<ceilingY;row+=27)rect(width*.2,row,width*.6,2,'#252f2e');
+  rect(width*.2,ceilingY-6,width*.6,6,ceilingGap<6?'#ff788b':'#9da98e');
+ }
+ ctx.save();ctx.textAlign='center';ctx.font='700 12px system-ui';ctx.fillStyle=ceilingGap<6?'#ff788b':'#fff1d5';ctx.fillText(`天井まで ${Math.max(0,ceilingGap).toFixed(1)} m`,width/2,96);ctx.restore();
+ const glow=ctx.createRadialGradient(width/2,floor-70,5,width/2,floor-70,width*.42);glow.addColorStop(0,'#f4bb5725');glow.addColorStop(1,'#f4bb5700');ctx.fillStyle=glow;ctx.fillRect(0,0,width,height);rect(width*.2,floor,width*.6,8,'#b28a59');
+ const musicalBeat=running?Math.max(0,(audio.currentTime-epoch)/beat):0,sway=reducedMotion?0:Math.sin(musicalBeat*Math.PI*2)*2;
+ ctx.save();ctx.translate(width/2-10,floor-9+sway+(reducedMotion?0:strike*10*impact));
+ rect(-19,-16,13,16,'#101e25');rect(7,-16,13,16,'#101e25');rect(-20,-55,40,40,'#4f9791');rect(-20,-28,40,8,'#294e50');rect(-15,-80,30,27,'#ebbe86');rect(9,-71,4,5,'#253137');rect(-21,-89,42,17,'#efb64b');rect(-26,-75,52,6,'#ffcd6b');rect(12,-84,9,9,'#fff0be');
+ ctx.translate(13,-48);ctx.rotate(reducedMotion?.35:-.8+Math.sin(musicalBeat*Math.PI)*.4+strike*(1.4+groove/200));rect(0,-4,49,8,'#c6985d');rect(38,-24,8,44,'#a8c4c1');rect(30,-24,25,7,'#d6e5d9');ctx.restore();
+ dust.forEach(p=>{if(running){p.life-=dt;p.x+=p.vx*dt;p.y+=p.vy*dt;p.vy+=380*dt;}ctx.globalAlpha=clamp(p.life*2,0,1);rect(p.x,p.y,p.spark?p.size*.5:p.size,p.spark?p.size*2:p.size,p.spark?'#fff0b3':'#efc07b');});ctx.globalAlpha=1;dust=dust.filter(p=>p.life>0);
+ if(strike>0&&!reducedMotion){
+  const progress=1-strike,cx=width/2+20;
+  ctx.strokeStyle=`rgba(255,218,144,${strike})`;ctx.lineWidth=3*strike;
+  for(let ring=0;ring<2;ring++){ctx.beginPath();ctx.ellipse(cx,floor,15+progress*(90+groove)+ring*14,6+progress*32+ring*5,0,0,Math.PI*2);ctx.stroke();}
+  // 放射状の衝撃線と残光。判定や音声時計は止めない。
+  for(let ray=0;ray<10;ray++){const angle=ray*Math.PI*2/10,r=22+progress*70;ctx.beginPath();ctx.moveTo(cx+Math.cos(angle)*r,floor+Math.sin(angle)*r*.5);ctx.lineTo(cx+Math.cos(angle)*(r+22*impact*strike),floor+Math.sin(angle)*(r+22*impact*strike)*.5);ctx.stroke();}
+  ctx.strokeStyle=`rgba(255,239,188,${strike*.65})`;ctx.lineWidth=9*strike;ctx.beginPath();ctx.arc(width/2,floor-52,53,-1.4,1.1);ctx.stroke();
+ }
+ ctx.restore();
+ if(running&&burst){
+  ctx.save();ctx.textAlign='center';ctx.font='900 26px system-ui';ctx.lineWidth=5;ctx.strokeStyle='#142c30';ctx.fillStyle='#ffe18b';
+  ctx.strokeText('GROOVE BURST!',width/2,height*.23);ctx.fillText('GROOVE BURST!',width/2,height*.23);
+  ctx.font='700 13px system-ui';ctx.fillText('一気に掘り抜け！',width/2,height*.23+23);ctx.restore();
+ }
+ if(running&&judgment){
+  const age=audio.currentTime-judgment.time;
+  if(age<.65){
+   ctx.save();ctx.globalAlpha=Math.min(1,(.65-age)/.18);
+   ctx.translate(width/2,height*.32-(reducedMotion?0:age*22));
+   const scale=reducedMotion?1:1+Math.max(0,1-age/.13)*.25;ctx.scale(scale,scale);
+   ctx.font='900 30px system-ui';ctx.textAlign='center';ctx.lineWidth=5;ctx.strokeStyle='#142c30';ctx.strokeText(judgment.label,0,0);ctx.fillStyle=judgment.color;ctx.fillText(judgment.label,0,0);
+   if(judgment.timing){ctx.font='700 15px system-ui';ctx.strokeText(judgment.timing,0,25);ctx.fillText(judgment.timing,0,25);}
+   ctx.restore();
+  }
+ }
+ requestAnimationFrame(draw);
+
+}
+ el.start.addEventListener('click',start);el.pause.addEventListener('click',stop);
+ el.dig.addEventListener('pointerdown',event=>{if(event.button!==0)return;event.preventDefault();tap();});
+ el.dig.addEventListener('click',event=>{if(event.detail===0)tap();});
+ document.addEventListener('keydown',event=>{if(event.code!=='Space'||!running||(event.target instanceof HTMLButtonElement&&event.target!==el.dig))return;event.preventDefault();if(!event.repeat)tap();});
+ document.addEventListener('visibilitychange',()=>{if(document.hidden)stop();});window.addEventListener('resize',resize);resize();hud();requestAnimationFrame(draw);
+</script>
+</html>
